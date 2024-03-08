@@ -36,13 +36,13 @@ app = Flask(__name__)
 #################################################
 # Flask Routes
 #################################################
-
+# Query to retrieve the last 12 months of precipitation data
 latest_date = session.query(func.max(Measurement.date)).scalar()
-latest_date = dt.datetime.strptime(latest_date,'%Y-%m-%d')
+latest_date_formatted= dt.datetime.strptime(latest_date,'%Y-%m-%d')
     # Calculate the date one year from the last date in data set.
-one_year_ago = latest_date - dt.timedelta(days=365)
+one_year_ago = latest_date_formatted - dt.timedelta(days=365)
 
-
+# Routes for Climate App
 @app.route("/")
 def welcome():
     """List all available api routes"""
@@ -51,18 +51,17 @@ def welcome():
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
+        f"/api/v1.0/2016-08-23<br/>"
+        f"/api/v1.0/2016-08-23/2017-08-23<br/>"
     )
     
 @app.route("/api/v1.0/precipitation")
 def precipitation():
     
     session=Session(engine)
-    
-    
-
     # Perform a query to retrieve the data and precipitation scores
     precipitation_data = session.query(Measurement.date, Measurement.prcp)\
-    .filter(Measurement.date >= one_year_ago).filter(Measurement.date <= latest_date)\
+    .filter(Measurement.date >= one_year_ago).filter(Measurement.date <= latest_date_formatted)\
     .order_by(Measurement.date).all()
     
     session.close()
@@ -74,17 +73,14 @@ def precipitation():
         precipitation_by_date.append(precipitation_dict)
         
     
-    return jsonify(precipitation_by_date)
-
-    
+    return jsonify(precipitation_by_date)    
 
 
 @app.route("/api/v1.0/stations")
 def stations():
     
-    session=Session(engine)
-    
-    
+    session=Session(engine)    
+    # Create a query that returns data for all of the stations
     station_names = session.query(Station.station).distinct().all()
     all_names = list(np.ravel(station_names))
     
@@ -92,9 +88,10 @@ def stations():
     
     return jsonify(all_names)
 
+
 @app.route("/api/v1.0/tobs")
 def tobs():
-    
+    # Query the last 12 months of temperature observation data for the most active station
     twelve_month_temps = session.query(Measurement.tobs).\
     filter(Measurement.station == 'USC00519281').\
     filter(Measurement.date >= one_year_ago).all()
@@ -104,6 +101,33 @@ def tobs():
     session.close()
     
     return jsonify(all_tobs)
+
+@app.route("/api/v1.0/<date>")
+def start(date):
+    session = Session(engine)
+    # Query to calculate the min, max and avg temp from start date
+    start_date = session.query(func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs))\
+        .filter(Measurement.date>=date).all()
+        
+    start_date_temps = list(np.ravel(start_date))
+    
+    session.close()
+    
+    return jsonify(start_date_temps)
+
+@app.route("/api/v1.0/<start>/<end>")
+def range(start,end):
+    session = Session(engine)
+    # Query to calculate the min, max and avg temp from date range
+    date_range = session.query(func.min(Measurement.tobs), func.max(Measurement.tobs), func.avg(Measurement.tobs))\
+        .filter(Measurement.date>=start).filter(Measurement.date<=end).all()
+    
+    one_year_temps = list(np.ravel(date_range))
+    
+    session.close()
+    
+    return jsonify(one_year_temps)
+    
     
 if __name__ == '__main__':
     app.run(debug=True)
